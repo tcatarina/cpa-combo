@@ -122,6 +122,7 @@ const comboPickerJS = `
       .then(function (d) {
         state.catalog = (d && d.data) || [];
         state.apiKey = null;
+        window.__comboCatalog = state.catalog;
         render();
       })
       .catch(function (e) {

@@ -62,13 +62,13 @@ func handleModelRegister(raw []byte) ([]byte, error) {
 		now := time.Now().Unix()
 		for _, c := range combos {
 			models = append(models, pluginapi.ModelInfo{
-				ID:          comboModelID(c.Name),
+				ID:          c.Name,
 				Object:      "model",
 				Created:     now,
 				OwnedBy:     comboNamespace,
 				Type:        "model",
 				DisplayName: c.Name,
-				Name:        comboModelID(c.Name),
+				Name:        c.Name,
 				Description: comboDescription(c),
 			})
 		}

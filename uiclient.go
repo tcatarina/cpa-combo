@@ -81,6 +81,27 @@ const comboPageJS = `
       .catch(function (e) { setMsg("Save failed: " + e.message, "err"); });
   }
 
+  function shadowCheck() {
+    var box = $("shadow");
+    if (!box) return;
+    var catalog = (window.__comboCatalog || []);
+    if (!catalog.length) { box.innerHTML = ""; return; }
+    var real = {};
+    catalog.forEach(function (m) {
+      var id = String(m.id || "");
+      if (!id) return;
+      if (m.owned_by === "combo" || state.combos.some(function (c) { return c.name === id; })) return;
+      real[id] = m;
+    });
+    var clashes = state.combos.filter(function (c) { return real[c.name]; });
+    if (!clashes.length) { box.innerHTML = ""; return; }
+    box.innerHTML = clashes.map(function (c) {
+      return '<div class="warn"><strong>' + esc(c.name) + "</strong> shadows the real model " +
+        esc(c.name) + " (" + esc(real[c.name].display_name || c.name) +
+        "). Requests for that name go to the combo, not the original model.</div>";
+    }).join("");
+  }
+
   function stat() {
     var targets = 0, providers = {};
     state.combos.forEach(function (c) {
@@ -135,7 +156,7 @@ const comboPageJS = `
   }
 
   function card(c) {
-    var id = "combo/" + c.name;
+    var id = c.name;
     var rows = c.targets.map(function (t, i) { return targetRow(c, t, i); }).join("");
     return '<section class="card" data-name="' + esc(c.name) + '">' +
       '<div class="combo-head"><div class="combo-id">' +
@@ -156,6 +177,7 @@ const comboPageJS = `
   function render() {
     stat();
     renderFilters();
+    shadowCheck();
     var items = visible();
     if (!items.length) {
       list.innerHTML = state.combos.length
@@ -283,6 +305,7 @@ const comboPageJS = `
     renderDraft();
   }
 
+  window.__comboCatalog = [];
   window.__comboReload = function () { return load(); };
   window.__comboRenderDraft = function () { renderDraft(); };
 

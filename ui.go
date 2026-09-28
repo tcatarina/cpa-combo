@@ -16,7 +16,8 @@ const comboPageHTML = `<!doctype html>
     <div>
       <h1>Combos</h1>
       <p class="sub">A combo is an ordered list of models exposed as a single model.
-      Requests resolve top to bottom and fall through to the next target on failure.</p>
+      Requests resolve top to bottom and fall through to the next target on failure.
+      A combo answers to its own name, exactly like a model.</p>
     </div>
     <div class="head-actions">
       <span id="lock" class="lock" data-state="locked">
@@ -33,6 +34,7 @@ const comboPageHTML = `<!doctype html>
     <div class="tile"><span class="k">Strategy</span><span class="v">priority</span></div>
   </section>
 
+  <div id="shadow" class="shadow"></div>
   <div id="filters" class="filters"></div>
   <main id="list" class="list"></main>
 
@@ -174,6 +176,12 @@ h1{margin:0;font-size:22px;font-weight:650;letter-spacing:-.01em}
 .target .p{font-size:11px;color:var(--muted);margin-top:1px}
 .target .arrow{flex:0 0 auto;color:var(--muted);font-size:11px;padding:0 2px}
 .target[data-first] .idx{background:color-mix(in srgb,var(--ok) 16%,transparent);color:var(--ok)}
+
+.shadow:not(:empty){display:flex;flex-direction:column;gap:6px;margin-bottom:14px}
+.warn{padding:9px 12px;border-radius:10px;font-size:12.5px;
+  background:color-mix(in srgb,var(--warning-color,#e6a23c) 12%,transparent);
+  border:1px solid color-mix(in srgb,var(--warning-color,#e6a23c) 34%,transparent)}
+.warn strong{font-weight:700}
 
 .empty{padding:44px 20px;text-align:center;color:var(--muted);
   border:1px dashed var(--border);border-radius:var(--r);background:var(--surface)}

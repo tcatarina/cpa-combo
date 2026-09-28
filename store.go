@@ -210,10 +210,6 @@ func normalizeModelName(v string) string {
 	return strings.TrimSpace(v)
 }
 
-func comboModelID(name string) string {
-	return comboNamespace + "/" + normalizeModelName(name)
-}
-
 func splitComboModel(model string) (string, bool) {
 	trimmed := normalizeModelName(model)
 	if trimmed == "" {
