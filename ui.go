@@ -47,12 +47,15 @@ const comboPageHTML = `<!doctype html>
       <input id="c-desc" placeholder="codex then glm" autocomplete="off">
     </div>
     <div class="field">
-      <label for="c-targets">Targets, one per line</label>
-      <textarea id="c-targets" rows="4" spellcheck="false" placeholder="codex/gpt-5.6-terra&#10;glm/glm-5"></textarea>
-      <p class="hint">Use <code>provider/model</code> or a bare <code>model</code>. Top target is tried first.</p>
+      <label>Targets</label>
+      <div class="targets-empty" id="c-targets">No models picked yet.</div>
+      <div class="create-actions">
+        <button id="c-pick" class="btn" type="button" data-needs-key>Pick models</button>
+        <span class="hint">Order decides priority. Top model is tried first.</span>
+      </div>
     </div>
     <div class="create-actions">
-      <button id="c-submit" class="btn primary" type="button">Create combo</button>
+      <button id="c-submit" class="btn primary" type="button" data-needs-key>Create combo</button>
       <span id="c-msg" class="msg"></span>
     </div>
   </section>
@@ -71,7 +74,10 @@ const comboPageHTML = `<!doctype html>
   </form>
 </dialog>
 
+__PICKER__
+
 <script src="?asset=js"></script>
+<script src="?asset=picker"></script>
 </body>
 </html>
 `
@@ -193,6 +199,10 @@ input:focus,textarea:focus{outline:2px solid var(--primary-line);border-color:va
 .hint{margin:6px 0 0;font-size:12px;color:var(--muted)}
 .hint code{background:var(--surface-2);padding:1px 5px;border-radius:4px;font-size:11px}
 .create-actions{display:flex;align-items:center;gap:12px;margin-top:16px}
+.field .create-actions{margin-top:8px}
+.targets-empty{padding:14px;border:1px dashed var(--border);border-radius:10px;
+  color:var(--muted);font-size:13px;text-align:center;background:var(--surface-2)}
+__PICKER_CSS__
 .msg{font-size:12.5px}
 .msg.err{color:var(--danger)}
 .msg.ok{color:var(--ok)}

@@ -43,15 +43,20 @@ func handleManagement(raw []byte) ([]byte, error) {
 	case path == resourcePath && method == http.MethodGet:
 		switch req.Query.Get("asset") {
 		case "css":
-			return okEnvelope(assetResponse("text/css; charset=utf-8", comboPageCSS))
+			return okEnvelope(assetResponse("text/css; charset=utf-8", comboPageCSS+comboPickerCSS))
 		case "js":
 			return okEnvelope(assetResponse("text/javascript; charset=utf-8",
 				strings.ReplaceAll(comboPageJS, "__BASE__", resourcePath)))
+		case "picker.js":
+			return okEnvelope(assetResponse("text/javascript; charset=utf-8", comboPickerJS))
 		case "data":
 			_, combos := runtime.snapshot()
 			return okEnvelope(jsonResponse(200, map[string]any{"combos": combos}))
 		}
-		return okEnvelope(assetResponse("text/html; charset=utf-8", comboPageHTML))
+		html := strings.ReplaceAll(comboPageHTML, "__PICKER__", comboPickerHTML)
+		html = strings.ReplaceAll(html, "__PICKER_CSS__", comboPickerCSS)
+		html = strings.ReplaceAll(html, "src=\"?asset=picker\"", "src=\"?asset=picker.js\"")
+		return okEnvelope(assetResponse("text/html; charset=utf-8", html))
 	case path == apiPath && method == http.MethodGet:
 		return serveCombosAPI(req.ManagementRequest, nil)
 	case path == apiPath && method == http.MethodPut:

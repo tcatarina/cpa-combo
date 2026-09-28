@@ -7,7 +7,7 @@ const comboPageJS = `
   var PAGE = location.pathname.replace(/\/+$/, "");
   var API = PAGE.replace(/^\/v0\/resource\/plugins\/[^/]+/, "/v0/management") + "/api";
   var KEY_STORE = "cpamp-combos-management-key";
-  var state = { combos: [], filter: "all", key: null };
+  var state = { combos: [], filter: "all", key: null, draft: [] };
   try { state.key = localStorage.getItem(KEY_STORE) || null; } catch (e) { state.key = null; }
 
   var $ = function (id) { return document.getElementById(id); };
@@ -141,6 +141,7 @@ const comboPageJS = `
         '<code class="combo-model">' + esc(id) + "</code>" +
       "</div>" +
       '<div class="combo-actions">' +
+        '<button class="btn sm" data-addmodels="' + esc(c.name) + '" data-needs-key>Add models</button>' +
         '<button class="btn sm" data-copy="' + esc(id) + '">Copy id</button>' +
         '<button class="btn sm danger" data-del="' + esc(c.name) + '" data-needs-key>Delete</button>' +
       "</div></div>" +
@@ -171,6 +172,14 @@ const comboPageJS = `
         if (!confirm('Delete combo "' + name + '"?')) return;
         var next = state.combos.filter(function (c) { return c.name !== name; });
         save(next, "PUT");
+      });
+    });
+
+    Array.prototype.forEach.call(list.querySelectorAll("[data-addmodels]"), function (b) {
+      b.addEventListener("click", function () {
+        window.__comboEditing = b.dataset.addmodels;
+        window.__comboState = state;
+        window.__comboOpenPicker();
       });
     });
 
@@ -231,28 +240,68 @@ const comboPageJS = `
     });
   }
 
-  function parseTargets(text) {
-    return text.split("\n").map(function (l) { return l.trim(); }).filter(Boolean)
-      .map(function (line) {
-        var slash = line.indexOf("/");
-        if (slash < 0) return { model: line };
-        return { provider: line.slice(0, slash), model: line.slice(slash + 1) };
-      });
+  function renderDraft() {
+    var box = $("c-targets");
+    if (!state.draft.length) {
+      box.className = "targets-empty";
+      box.textContent = "No models picked yet.";
+      return;
+    }
+    box.className = "draft";
+    box.innerHTML = state.draft.map(function (t, i) {
+      var label = t.model;
+      return '<div class="target" data-first="' + (i === 0 ? "1" : "") + '">' +
+        '<span class="idx">' + (i + 1) + "</span>" +
+        '<span class="meta"><span class="m">' + esc(label) + "</span>" +
+        '<span class="p">' + esc(t.provider || "resolved by model name") + "</span></span>" +
+        '<button class="btn sm ghost" data-dup="' + i + '" title="Move up"' + (i === 0 ? " disabled" : "") + ">&uarr;</button>" +
+        '<button class="btn sm ghost" data-ddn="' + i + '" title="Move down"' +
+          (i === state.draft.length - 1 ? " disabled" : "") + ">&darr;</button>" +
+        '<button class="btn sm ghost" data-rm="' + i + '" title="Remove">Remove</button>' +
+        "</div>";
+    }).join("");
+    Array.prototype.forEach.call(box.querySelectorAll("[data-rm]"), function (b) {
+      b.addEventListener("click", function () { state.draft.splice(Number(b.dataset.rm), 1); renderDraft(); });
+    });
+    Array.prototype.forEach.call(box.querySelectorAll("[data-dup]"), function (b) {
+      b.addEventListener("click", function () { move(Number(b.dataset.dup), -1); });
+    });
+    Array.prototype.forEach.call(box.querySelectorAll("[data-ddn]"), function (b) {
+      b.addEventListener("click", function () { move(Number(b.dataset.ddn), 1); });
+    });
   }
+
+  function move(i, d) {
+    var j = i + d;
+    if (j < 0 || j >= state.draft.length) return;
+    var t = state.draft[i];
+    state.draft[i] = state.draft[j];
+    state.draft[j] = t;
+    renderDraft();
+  }
+
+  window.__comboReload = function () { return load(); };
+  window.__comboRenderDraft = function () { renderDraft(); };
+
+  $("c-pick").addEventListener("click", function () {
+    window.__comboEditing = null;
+    window.__comboState = state;
+    window.__comboOpenPicker();
+  });
 
   $("c-submit").addEventListener("click", function () {
     var name = $("c-name").value.trim();
-    var targets = parseTargets($("c-targets").value);
     if (!name) return setMsg("Name is required.", "err");
-    if (!targets.length) return setMsg("Add at least one target.", "err");
+    if (!state.draft.length) return setMsg("Pick at least one model.", "err");
     if (state.combos.some(function (c) { return c.name === name; })) {
       return setMsg("A combo named " + name + " already exists.", "err");
     }
-    var next = state.combos.concat([{ name: name, description: $("c-desc").value.trim(), targets: targets }]);
-    api("", { method: "POST", body: { name: name, description: $("c-desc").value.trim(), targets: targets } })
+    var desc = $("c-desc").value.trim();
+    api("", { method: "POST", body: { name: name, description: desc, targets: state.draft } })
       .then(function () { return load(); })
       .then(function () {
-        $("c-name").value = ""; $("c-desc").value = ""; $("c-targets").value = "";
+        $("c-name").value = ""; $("c-desc").value = ""; state.draft = [];
+        renderDraft();
         setMsg("Created " + name + ".", "ok");
       })
       .catch(function (e) { setMsg("Create failed: " + e.message, "err"); });
@@ -280,6 +329,7 @@ const comboPageJS = `
   });
 
   applyLock();
+  renderDraft();
   load();
 })();
 `
