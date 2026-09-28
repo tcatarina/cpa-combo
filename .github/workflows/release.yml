@@ -107,11 +107,10 @@ jobs:
           tar -czf "${staging}.tar.gz" -C dist "${staging}"
 
       - name: Verify artifact
-        env:
-          STAGING: ${{ env.PLUGIN_NAME }}_${{ github.ref_name }}_${{ matrix.target }}
         run: |
           set -euo pipefail
-          artifact="${STAGING}/${PLUGIN_NAME}.so"
+          staging="${PLUGIN_NAME}_${GITHUB_REF_NAME#v}_${{ matrix.target }}"
+          artifact="${staging}/${PLUGIN_NAME}.so"
           test -s "${artifact}"
           file "${artifact}"
           if ! nm -D "${artifact}" | grep -q ' T cliproxy_plugin_init$'; then
