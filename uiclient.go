@@ -151,27 +151,36 @@ const comboPageJS = `
     });
   }
 
-  function accountsFor(t) {
-    var provider = String(t.provider || "").toLowerCase();
-    if (!provider) return [];
-    return state.accounts.filter(function (a) { return a.provider === provider; });
+  function accountGroups() {
+    var byProvider = {};
+    (state.accounts || []).forEach(function (a) {
+      var key = a.provider || "other";
+      (byProvider[key] = byProvider[key] || []).push(a);
+    });
+    return Object.keys(byProvider).sort().map(function (key) {
+      return { provider: key, accounts: byProvider[key] };
+    });
   }
 
   function accountSelect(t, i) {
-    var list = accountsFor(t);
     if (!state.accounts.length) return "";
+    var groups = accountGroups();
     var opts = '<option value=""' + (t.auth_id ? "" : " selected") + ">Any (auto)</option>";
-    list.forEach(function (a) {
-      var tag = a.label || a.name;
-      if (a.disabled) tag += " (disabled)";
-      else if (a.unavailable) tag += " (unavailable)";
-      opts += '<option value="' + esc(a.id) + '"' + (t.auth_id === a.id ? " selected" : "") + ">" +
-        esc(tag) + "</option>";
-    });
-    if (t.auth_id && !list.some(function (a) { return a.id === t.auth_id; })) {
+    if (t.auth_id && !(state.accounts || []).some(function (a) { return a.id === t.auth_id; })) {
       opts += '<option value="' + esc(t.auth_id) + '" selected>' +
         esc(t.account || t.auth_id) + " (missing)</option>";
     }
+    groups.forEach(function (g) {
+      opts += '<optgroup label="' + esc(g.provider) + '">';
+      g.accounts.forEach(function (a) {
+        var tag = a.label || a.name;
+        if (a.disabled) tag += " (disabled)";
+        else if (a.unavailable) tag += " (unavailable)";
+        opts += '<option value="' + esc(a.id) + '"' + (t.auth_id === a.id ? " selected" : "") + ">" +
+          esc(tag) + "</option>";
+      });
+      opts += "</optgroup>";
+    });
     return '<select class="acct" data-acct="' + i + '">' + opts + "</select>";
   }
 

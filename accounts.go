@@ -17,7 +17,6 @@ type comboAccount struct {
 	Name        string `json:"name"`
 	Label       string `json:"label"`
 	Provider    string `json:"provider"`
-	Type        string `json:"type"`
 	Status      string `json:"status"`
 	Disabled    bool   `json:"disabled"`
 	Unavailable bool   `json:"unavailable"`
@@ -47,7 +46,6 @@ func listComboAccounts() ([]comboAccount, error) {
 			Name:        name,
 			Label:       label,
 			Provider:    strings.ToLower(strings.TrimSpace(f.Provider)),
-			Type:        strings.ToLower(strings.TrimSpace(f.Type)),
 			Status:      strings.TrimSpace(f.Status),
 			Disabled:    f.Disabled,
 			Unavailable: f.Unavailable,
