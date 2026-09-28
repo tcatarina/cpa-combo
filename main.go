@@ -127,9 +127,11 @@ type rpcExecutorRequest struct {
 	HostCallbackID string `json:"host_callback_id,omitempty"`
 }
 
+// executorStreamResponse returns headers only. The host opens a push stream and
+// passes its stream_id to the plugin, so chunks are emitted asynchronously with
+// host.stream.emit instead of being batched into this reply.
 type executorStreamResponse struct {
-	Headers http.Header                     `json:"headers,omitempty"`
-	Chunks  []pluginapi.ExecutorStreamChunk `json:"chunks,omitempty"`
+	Headers http.Header `json:"headers,omitempty"`
 }
 
 type rpcManagementRequest struct {

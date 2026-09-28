@@ -134,22 +134,24 @@ func handleExecute(raw []byte, stream bool) ([]byte, error) {
 	}
 
 	entry := entryProtocol(req.SourceFormat, req.Format)
-	chunks, headers, err := runCombo(context.Background(), c, payload, entry, stream, req.HostCallbackID)
+	if stream {
+		streamID := strings.TrimSpace(req.StreamID)
+		if streamID == "" {
+			return errorEnvelope("bad_request", "stream_id is required for streaming combos"), nil
+		}
+		go func() {
+			closePluginStream(streamID, streamCombo(context.Background(), c, payload, entry, req.HostCallbackID, streamID))
+		}()
+		return okEnvelope(executorStreamResponse{
+			Headers: http.Header{"Content-Type": []string{"text/event-stream"}},
+		})
+	}
+
+	body, headers, err := runCombo(context.Background(), c, payload, entry, req.HostCallbackID)
 	if err != nil {
 		return errorEnvelope("combo_failed", err.Error()), nil
 	}
-
-	if stream {
-		out := make([]pluginapi.ExecutorStreamChunk, 0, len(chunks))
-		for _, chunk := range chunks {
-			out = append(out, pluginapi.ExecutorStreamChunk{Payload: chunk})
-		}
-		return okEnvelope(executorStreamResponse{Headers: headers, Chunks: out})
-	}
-	if len(chunks) == 0 {
-		return errorEnvelope("combo_failed", "combo "+name+" returned an empty response"), nil
-	}
-	return okEnvelope(pluginapi.ExecutorResponse{Payload: chunks[0], Headers: headers})
+	return okEnvelope(pluginapi.ExecutorResponse{Payload: body, Headers: headers})
 }
 
 func entryProtocol(sourceFormat, format string) string {
@@ -169,14 +171,14 @@ type comboAttemptFailure struct {
 	status int
 }
 
-func runCombo(ctx context.Context, c combo, body []byte, entry string, stream bool, hostCallbackID string) ([][]byte, http.Header, error) {
+func runCombo(ctx context.Context, c combo, body []byte, entry, hostCallbackID string) ([]byte, http.Header, error) {
 	if len(c.Targets) == 0 {
 		return nil, nil, errors.New("combo " + c.Name + " has no targets")
 	}
 	var failures []comboAttemptFailure
 	var lastHeaders http.Header
 	for _, target := range c.Targets {
-		payload, headers, err := hostModelExecute(ctx, hostCallbackID, target, body, entry, stream)
+		payload, headers, err := hostModelExecute(ctx, hostCallbackID, target, body, entry)
 		if err == nil {
 			return payload, headers, nil
 		}
@@ -210,67 +212,142 @@ type hostModelExecutionRequest struct {
 	HostCallbackID string `json:"host_callback_id,omitempty"`
 }
 
-func hostModelExecute(ctx context.Context, hostCallbackID string, target comboTarget, body []byte, entry string, stream bool) ([][]byte, http.Header, error) {
-	method := pluginabi.MethodHostModelExecute
-	if stream {
-		method = pluginabi.MethodHostModelExecuteStream
-	}
+func hostModelExecute(ctx context.Context, hostCallbackID string, target comboTarget, body []byte, entry string) ([]byte, http.Header, error) {
 	req := hostModelExecutionRequest{
 		HostModelExecutionRequest: pluginapi.HostModelExecutionRequest{
 			EntryProtocol:  entry,
 			ExitProtocol:   entry,
 			Model:          target.Model,
-			Stream:         stream,
+			Stream:         false,
 			Body:           body,
 			ForcedProvider: providers.resolve(target.Provider),
 			AuthID:         target.AuthID,
 		},
 		HostCallbackID: hostCallbackID,
 	}
-	if stream {
-		return drainHostStream(req)
-	}
 	var resp pluginapi.HostModelExecutionResponse
-	if err := callHostResult(method, req, &resp); err != nil {
+	if err := callHostResult(pluginabi.MethodHostModelExecute, req, &resp); err != nil {
 		return nil, nil, err
 	}
 	if resp.StatusCode >= 400 {
 		return nil, cloneHeader(resp.Headers), fmt.Errorf("host model status %d: %s",
 			resp.StatusCode, snippet(resp.Body))
 	}
-	return [][]byte{resp.Body}, cloneHeader(resp.Headers), nil
+	return resp.Body, cloneHeader(resp.Headers), nil
 }
 
-func drainHostStream(req hostModelExecutionRequest) ([][]byte, http.Header, error) {
+func streamCombo(ctx context.Context, c combo, body []byte, entry, hostCallbackID, streamID string) error {
+	if len(c.Targets) == 0 {
+		return errors.New("combo " + c.Name + " has no targets")
+	}
+	var failures []comboAttemptFailure
+	for _, target := range c.Targets {
+		emitted, err := forwardTargetStream(ctx, target, body, entry, hostCallbackID, streamID)
+		if err == nil {
+			return nil
+		}
+		if emitted {
+			// The client already holds a partial response, so failing over now
+			// would interleave two answers into one stream.
+			return fmt.Errorf("combo %s: target %s failed mid-stream after output started: %w",
+				c.Name, describeTarget(target), err)
+		}
+		status := statusFromError(err)
+		logWarn("combo " + c.Name + ": target " + describeTarget(target) + " failed (" +
+			err.Error() + "); trying next target")
+		failures = append(failures, comboAttemptFailure{target: target, err: err, status: status})
+	}
+	parts := make([]string, 0, len(failures))
+	for _, f := range failures {
+		parts = append(parts, describeTarget(f.target)+": "+f.err.Error())
+	}
+	return fmt.Errorf("combo %s exhausted all %d targets (%s)",
+		c.Name, len(c.Targets), strings.Join(parts, "; "))
+}
+
+func forwardTargetStream(ctx context.Context, target comboTarget, body []byte, entry, hostCallbackID, streamID string) (bool, error) {
+	req := hostModelExecutionRequest{
+		HostModelExecutionRequest: pluginapi.HostModelExecutionRequest{
+			EntryProtocol:  entry,
+			ExitProtocol:   entry,
+			Model:          target.Model,
+			Stream:         true,
+			Body:           body,
+			ForcedProvider: providers.resolve(target.Provider),
+			AuthID:         target.AuthID,
+		},
+		HostCallbackID: hostCallbackID,
+	}
 	var resp pluginapi.HostModelStreamResponse
 	if err := callHostResult(pluginabi.MethodHostModelExecuteStream, req, &resp); err != nil {
-		return nil, nil, err
+		return false, err
 	}
+	upstream := strings.TrimSpace(resp.StreamID)
 	if resp.StatusCode >= 400 {
-		return nil, cloneHeader(resp.Headers), fmt.Errorf("host stream status %d", resp.StatusCode)
+		if upstream != "" {
+			_ = callHostResult(pluginabi.MethodHostModelStreamClose,
+				pluginapi.HostModelStreamCloseRequest{StreamID: upstream}, nil)
+		}
+		return false, fmt.Errorf("host model status %d", resp.StatusCode)
 	}
-	streamID := strings.TrimSpace(resp.StreamID)
-	if streamID == "" {
-		return nil, cloneHeader(resp.Headers), errors.New("host stream returned no stream id")
+	if upstream == "" {
+		return false, errors.New("host stream returned no stream id")
 	}
-	var chunks [][]byte
+	defer func() {
+		_ = callHostResult(pluginabi.MethodHostModelStreamClose,
+			pluginapi.HostModelStreamCloseRequest{StreamID: upstream}, nil)
+	}()
+
+	emitted := false
 	for {
 		var read pluginapi.HostModelStreamReadResponse
 		if err := callHostResult(pluginabi.MethodHostModelStreamRead,
-			pluginapi.HostModelStreamReadRequest{StreamID: streamID}, &read); err != nil {
-			return nil, nil, err
+			pluginapi.HostModelStreamReadRequest{StreamID: upstream}, &read); err != nil {
+			return emitted, err
 		}
 		if len(read.Payload) > 0 {
-			chunk := make([]byte, len(read.Payload))
-			copy(chunk, read.Payload)
-			chunks = append(chunks, chunk)
+			if err := emitPluginStreamChunk(streamID, read.Payload); err != nil {
+				return emitted, err
+			}
+			emitted = true
 		}
 		if read.Done {
-			_ = callHostResult(pluginabi.MethodHostModelStreamClose,
-				pluginapi.HostModelStreamCloseRequest{StreamID: streamID}, nil)
-			return chunks, cloneHeader(resp.Headers), nil
+			return emitted, nil
 		}
 	}
+}
+
+type streamEmitRequest struct {
+	StreamID string `json:"stream_id"`
+	Payload  []byte `json:"payload,omitempty"`
+	Error    string `json:"error,omitempty"`
+}
+
+type streamCloseRequest struct {
+	StreamID string `json:"stream_id"`
+	Error    string `json:"error,omitempty"`
+}
+
+func emitPluginStreamChunk(streamID string, payload []byte) error {
+	if strings.TrimSpace(streamID) == "" {
+		return errors.New("stream id is required to emit")
+	}
+	_, err := callHost(pluginabi.MethodHostStreamEmit, streamEmitRequest{
+		StreamID: streamID,
+		Payload:  payload,
+	})
+	return err
+}
+
+func closePluginStream(streamID string, cause error) {
+	if strings.TrimSpace(streamID) == "" {
+		return
+	}
+	msg := ""
+	if cause != nil {
+		msg = cause.Error()
+	}
+	_, _ = callHost(pluginabi.MethodHostStreamClose, streamCloseRequest{StreamID: streamID, Error: msg})
 }
 
 func streamIDFromResponse(raw json.RawMessage) string {

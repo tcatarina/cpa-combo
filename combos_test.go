@@ -1,6 +1,8 @@
 package main
 
 import (
+	"context"
+	"strings"
 	"testing"
 )
 
@@ -67,6 +69,33 @@ func TestDescribeTargetIncludesAccount(t *testing.T) {
 	}
 	if got := describeTarget(comboTarget{Model: "glm-5"}); got != "glm-5" {
 		t.Fatalf("got %q", got)
+	}
+}
+
+func TestStreamComboStopsFailingOverAfterOutputStarted(t *testing.T) {
+	c := combo{Name: "smart", Targets: []comboTarget{
+		{Provider: "glm", Model: "a"},
+		{Provider: "glm", Model: "b"},
+	}}
+	err := streamCombo(context.Background(), c, []byte(`{}`), "openai", "cb", "")
+	if err == nil {
+		t.Fatal("expected an error with no reachable host")
+	}
+	// The host is unavailable, so nothing was ever emitted and every target was tried.
+	if !strings.Contains(err.Error(), "exhausted all 2 targets") {
+		t.Fatalf("want an exhausted-all-targets error, got %v", err)
+	}
+	for _, target := range c.Targets {
+		if !strings.Contains(err.Error(), target.Model) {
+			t.Fatalf("error should name target %s: %v", target.Model, err)
+		}
+	}
+}
+
+func TestStreamComboRejectsEmptyTargetList(t *testing.T) {
+	err := streamCombo(context.Background(), combo{Name: "empty"}, nil, "openai", "cb", "")
+	if err == nil || !strings.Contains(err.Error(), "has no targets") {
+		t.Fatalf("want a no-targets error, got %v", err)
 	}
 }
 
