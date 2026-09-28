@@ -64,9 +64,9 @@ const comboPageHTML = `<!doctype html>
 <dialog id="unlock">
   <form method="dialog">
     <h3>Unlock editing</h3>
-    <p>The panel does not share its management key with plugin pages, so paste the
-    CPA management key once. It is kept in this browser only.</p>
-    <input id="u-key" type="password" placeholder="management key" autocomplete="off">
+    <p>Plugin pages do not inherit the panel session, so paste the panel admin key
+    once. It is kept in this browser only and never leaves this host.</p>
+    <input id="u-key" type="password" placeholder="panel admin key" autocomplete="off">
     <div class="dlg-actions">
       <button value="cancel" class="btn ghost" type="submit">Cancel</button>
       <button id="u-save" value="ok" class="btn primary" type="submit">Save</button>

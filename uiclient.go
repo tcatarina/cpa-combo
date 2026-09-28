@@ -5,7 +5,10 @@ const comboPageJS = `
   "use strict";
 
   var PAGE = location.pathname.replace(/\/+$/, "");
-  var API = PAGE.replace(/^\/v0\/resource\/plugins\/[^/]+/, "/v0/management") + "/api";
+  var MARK = "/v0/resource/plugins/";
+  var CUT = location.pathname.indexOf(MARK);
+  var PREFIX = CUT >= 0 ? location.pathname.slice(0, CUT) : "";
+  var API = PREFIX + "/v0/management/combos/api";
   var KEY_STORE = "cpamp-combos-management-key";
   var state = { combos: [], filter: "all", key: null, draft: [] };
   try { state.key = localStorage.getItem(KEY_STORE) || null; } catch (e) { state.key = null; }

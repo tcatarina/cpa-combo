@@ -70,8 +70,11 @@ const comboPickerJS = `
   "use strict";
 
   var PAGE = location.pathname.replace(/\/+$/, "");
-  var API = PAGE.replace(/^\/v0\/resource\/plugins\/[^/]+/, "/v0/management") + "/api";
-  var MGMT = PAGE.replace(/^\/v0\/resource\/plugins\/[^/]+/, "/v0/management");
+  var MARK = "/v0/resource/plugins/";
+  var CUT = location.pathname.indexOf(MARK);
+  var PREFIX = CUT >= 0 ? location.pathname.slice(0, CUT) : "";
+  var API = PREFIX + "/v0/management/combos/api";
+  var MGMT = PREFIX + "/v0/management";
   var PRESETS = ["opus", "sonnet", "deepseek", "kimi", "qwen", "gemini", "flash", "gpt", "glm", "grok"];
   var state = { catalog: [], query: "", apiKey: null, busy: false };
 
@@ -85,8 +88,6 @@ const comboPickerJS = `
   }
 
   function key() { var p = window.__comboState || {}; return p.key || null; }
-
-  function origin() { return location.origin; }
 
   function jfetch(url, options) {
     options = options || {};
