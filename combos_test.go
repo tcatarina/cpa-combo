@@ -72,6 +72,36 @@ func TestDescribeTargetIncludesAccount(t *testing.T) {
 	}
 }
 
+func TestResolveRejectsVendorNamesThatAreNotProviders(t *testing.T) {
+	c := &providerCache{}
+	c.set([]string{"claude", "codex", "openai-compatibility-glm"})
+
+	if got := c.resolve("claude"); got != "claude" {
+		t.Errorf("exact provider key must resolve, got %q", got)
+	}
+	// "anthropic" is the model catalog's owned_by value, not a provider key.
+	// Returning it verbatim pins execution to a provider that does not exist.
+	if got := c.resolve("anthropic"); got != "" {
+		t.Errorf("vendor name must not be pinned, got %q", got)
+	}
+	if got := c.resolve("zhipu"); got != "" {
+		t.Errorf("unknown vendor name must not be pinned, got %q", got)
+	}
+	if got := c.resolve("glm"); got != "openai-compatibility-glm" {
+		t.Errorf("suffix match expected, got %q", got)
+	}
+	if got := c.resolve(""); got != "" {
+		t.Errorf("empty must stay empty, got %q", got)
+	}
+}
+
+func TestResolveKeepsIntentWhenProviderListIsCold(t *testing.T) {
+	c := &providerCache{}
+	if got := c.resolve("codex"); got != "codex" {
+		t.Errorf("with no known providers, keep the caller's intent, got %q", got)
+	}
+}
+
 func TestNegotiationProtocolsSwapsEntryAndReply(t *testing.T) {
 	cases := []struct {
 		name      string

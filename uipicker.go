@@ -169,7 +169,7 @@ const comboPickerJS = `
       var slash = id.indexOf("/");
       return {
         model: id,
-        provider: slash > 0 ? id.slice(0, slash) : (m.owned_by || ""),
+        provider: slash > 0 ? id.slice(0, slash) : "",
         display: m.display_name || m.id || id
       };
     });

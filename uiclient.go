@@ -10,7 +10,7 @@ const comboPageJS = `
   var PREFIX = CUT >= 0 ? location.pathname.slice(0, CUT) : "";
   var API = PREFIX + "/v0/management/combos/api";
   var KEY_STORE = "cpamp-combos-management-key";
-  var state = { combos: [], filter: "all", key: null, draft: [], accounts: [] };
+  var state = { combos: [], filter: "all", key: null, draft: [], accounts: [], providers: [] };
   try { state.key = localStorage.getItem(KEY_STORE) || null; } catch (e) { state.key = null; }
 
   var $ = function (id) { return document.getElementById(id); };
@@ -67,6 +67,7 @@ const comboPageJS = `
     return fetch(PAGE + "?asset=data").then(function (r) { return r.json(); })
       .then(function (d) {
         state.combos = (d && d.combos) || [];
+        if (d && d.providers) state.providers = d.providers;
         render();
       })
       .catch(function () {
@@ -149,6 +150,19 @@ const comboPageJS = `
     }).catch(function () {
       state.accounts = [];
     });
+  }
+
+  function providerSelect(t, i) {
+    var list = state.providers || [];
+    if (!list.length) return "";
+    var opts = '<option value=""' + (t.provider ? "" : " selected") + ">Auto (from model name)</option>";
+    list.forEach(function (p) {
+      opts += '<option value="' + esc(p) + '"' + (t.provider === p ? " selected" : "") + ">" + esc(p) + "</option>";
+    });
+    if (t.provider && list.indexOf(t.provider) < 0) {
+      opts += '<option value="' + esc(t.provider) + '" selected>' + esc(t.provider) + " (unknown)</option>";
+    }
+    return '<select class="acct" data-prov="' + i + '">' + opts + "</select>";
   }
 
   function accountGroups() {
@@ -332,6 +346,7 @@ const comboPageJS = `
         '<span class="idx">' + (i + 1) + "</span>" +
         '<span class="meta"><span class="m">' + esc(label) + "</span>" +
         '<span class="p">' + esc(sub) + "</span></span>" +
+        providerSelect(t, i) +
         accountSelect(t, i) +
         '<button class="btn sm ghost" data-clone="' + i + '" title="Add the same model again on another account">+acct</button>' +
         '<button class="btn sm ghost" data-dup="' + i + '" title="Move up"' + (i === 0 ? " disabled" : "") + ">&uarr;</button>" +
@@ -340,6 +355,14 @@ const comboPageJS = `
         '<button class="btn sm ghost" data-rm="' + i + '" title="Remove">Remove</button>' +
         "</div>";
     }).join("");
+    Array.prototype.forEach.call(box.querySelectorAll("[data-prov]"), function (s) {
+      s.addEventListener("change", function () {
+        var t = state.draft[Number(s.dataset.prov)];
+        if (!t) return;
+        if (s.value) t.provider = s.value; else delete t.provider;
+        renderDraft();
+      });
+    });
     Array.prototype.forEach.call(box.querySelectorAll("[data-acct]"), function (s) {
       s.addEventListener("change", function () {
         applyAccount(Number(s.dataset.acct), s.value);

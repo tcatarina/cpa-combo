@@ -70,5 +70,8 @@ func (c *providerCache) resolve(spec string) string {
 	if len(contains) == 1 {
 		return contains[0]
 	}
-	return want
+	if len(known) == 0 {
+		return want
+	}
+	return ""
 }

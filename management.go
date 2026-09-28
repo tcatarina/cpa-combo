@@ -51,7 +51,10 @@ func handleManagement(raw []byte) ([]byte, error) {
 			return okEnvelope(assetResponse("text/javascript; charset=utf-8", comboPickerJS))
 		case "data":
 			_, combos := runtime.snapshot()
-			return okEnvelope(jsonResponse(200, map[string]any{"combos": combos}))
+			return okEnvelope(jsonResponse(200, map[string]any{
+				"combos":    combos,
+				"providers": providers.list(),
+			}))
 		}
 		html := strings.ReplaceAll(comboPageHTML, "__PICKER__", comboPickerHTML)
 		html = strings.ReplaceAll(html, "__PICKER_CSS__", comboPickerCSS)
