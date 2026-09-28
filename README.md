@@ -43,15 +43,34 @@ list on the next CPA configuration change or restart.
 ## Build
 
 ```sh
-go build -buildmode=c-shared -o combos.so .
+make            # builds dist/combos.so and verifies the exported C ABI symbol
 ```
 
 Cross-compile for arm64 with a cgo toolchain:
 
 ```sh
 CGO_ENABLED=1 GOOS=linux GOARCH=arm64 \
-  CC=aarch64-unknown-linux-gnu-gcc \
-  go build -buildmode=c-shared -o combos-linux-arm64.so .
+  CC=aarch64-linux-gnu-gcc \
+  go build -trimpath -buildmode=c-shared -o combos-linux-arm64.so .
+```
+
+## Releases
+
+`.github/workflows/release.yml` builds on every push and pull request, and
+publishes release assets when a `v*` tag is pushed. Every artifact is checked
+for the exported `cliproxy_plugin_init` symbol before it ships.
+
+```sh
+git tag v0.1.0
+git push origin v0.1.0
+```
+
+Assets:
+
+```text
+combos_<version>_linux_amd64.tar.gz
+combos_<version>_linux_arm64.tar.gz
+checksums.txt
 ```
 
 ## Install
