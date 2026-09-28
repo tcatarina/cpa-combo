@@ -17,6 +17,7 @@ concurrency:
 
 env:
   PLUGIN_NAME: combos
+  PLUGIN_VERSION: ${{ github.ref_name }}
 
 jobs:
   verify:
@@ -49,7 +50,9 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p dist
-          CGO_ENABLED=1 go build -trimpath -buildmode=c-shared -o "dist/${PLUGIN_NAME}.so" .
+          CGO_ENABLED=1 go build -trimpath -buildmode=c-shared \
+            -ldflags "-X main.pluginVersion=${PLUGIN_VERSION#v}" \
+            -o "dist/${PLUGIN_NAME}.so" .
           rm -f dist/*.h
           test -s "dist/${PLUGIN_NAME}.so"
 
@@ -63,6 +66,17 @@ jobs:
             exit 1
           fi
           file "${artifact}"
+
+      - name: Verify the version was stamped
+        run: |
+          set -euo pipefail
+          artifact="dist/${PLUGIN_NAME}.so"
+          want="${PLUGIN_VERSION#v}"
+          if ! strings "${artifact}" | grep -qF -- "${want}"; then
+            echo "::error::version '${want}' is not in the binary; the -X ldflag did not apply"
+            exit 1
+          fi
+          echo "stamped version: ${want}"
 
   build:
     name: Build ${{ matrix.target }}
@@ -104,6 +118,7 @@ jobs:
           mkdir -p "dist/${staging}"
           CGO_ENABLED=1 GOOS=linux go build -trimpath \
             -buildmode=c-shared \
+            -ldflags "-X main.pluginVersion=${PLUGIN_VERSION#v}" \
             -o "dist/${staging}/${PLUGIN_NAME}.so" .
           rm -f dist/*.h
           cp README.md "dist/${staging}/README.md"

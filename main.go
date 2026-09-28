@@ -71,11 +71,14 @@ import (
 
 const (
 	pluginName     = "combos"
-	pluginVersion  = "0.1.0"
 	executorID     = "combos"
 	storeFileName  = "combos.json"
 	comboNamespace = "combo"
 )
+
+// pluginVersion is stamped by the release workflow from the tag. A build that
+// was not stamped reports "dev" rather than a version that can silently go stale.
+var pluginVersion = "dev"
 
 var (
 	hostPtr     atomic.Pointer[C.cliproxy_host_api]
@@ -237,7 +240,7 @@ func pluginRegistration() registration {
 			Name:             pluginName,
 			Version:          pluginVersion,
 			Author:           "tcatarina",
-			GitHubRepository: "https://github.com/tcatarina/CPA-Manager-Plus",
+			GitHubRepository: "https://github.com/tcatarina/cpa-combo",
 			ConfigFields: []pluginapi.ConfigField{
 				{Name: "enabled", Type: pluginapi.ConfigFieldTypeBoolean, Description: "Enable combo routing."},
 			},
