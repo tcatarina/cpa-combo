@@ -133,36 +133,54 @@ func handleExecute(raw []byte, stream bool) ([]byte, error) {
 		payload = req.OriginalRequest
 	}
 
-	entry := entryProtocol(req.SourceFormat, req.Format)
+	// req.Payload is already translated into the target's format, so it must be
+	// declared as the entry protocol. The client asked in req.SourceFormat, so
+	// that is the protocol its reply must come back in.
+	bodyFormat, replyFormat := negotiationProtocols(req)
 	if stream {
 		streamID := strings.TrimSpace(req.StreamID)
 		if streamID == "" {
 			return errorEnvelope("bad_request", "stream_id is required for streaming combos"), nil
 		}
 		go func() {
-			closePluginStream(streamID, streamCombo(context.Background(), c, payload, entry, req.HostCallbackID, streamID))
+			closePluginStream(streamID, streamCombo(context.Background(), c, payload, bodyFormat, replyFormat, req.HostCallbackID, streamID))
 		}()
 		return okEnvelope(executorStreamResponse{
 			Headers: http.Header{"Content-Type": []string{"text/event-stream"}},
 		})
 	}
 
-	body, headers, err := runCombo(context.Background(), c, payload, entry, req.HostCallbackID)
+	body, headers, err := runCombo(context.Background(), c, payload, bodyFormat, replyFormat, req.HostCallbackID)
 	if err != nil {
 		return errorEnvelope("combo_failed", err.Error()), nil
 	}
 	return okEnvelope(pluginapi.ExecutorResponse{Payload: body, Headers: headers})
 }
 
-func entryProtocol(sourceFormat, format string) string {
-	for _, candidate := range []string{sourceFormat, format} {
-		v := strings.ToLower(strings.TrimSpace(candidate))
-		switch v {
-		case "openai", "claude", "gemini", "responses":
-			return v
-		}
+// normalizeProtocol passes the host's format identifier through unchanged. The
+// host treats these as opaque strings, so maintaining a local list of valid
+// names silently breaks every format it renames or adds.
+func normalizeProtocol(v string) string {
+	return strings.TrimSpace(v)
+}
+
+// negotiationProtocols returns the entry and exit protocols for the nested host
+// execution. req.Payload is already translated into the target's format, so it
+// must be declared as the entry protocol; the client asked in req.SourceFormat,
+// so that is the protocol its reply must come back in.
+func negotiationProtocols(req rpcExecutorRequest) (body, reply string) {
+	target := normalizeProtocol(req.Format)
+	client := normalizeProtocol(req.SourceFormat)
+	if target == "" {
+		target = client
 	}
-	return "openai"
+	if client == "" {
+		client = target
+	}
+	if target == "" {
+		target, client = "openai", "openai"
+	}
+	return target, client
 }
 
 type comboAttemptFailure struct {
@@ -171,14 +189,14 @@ type comboAttemptFailure struct {
 	status int
 }
 
-func runCombo(ctx context.Context, c combo, body []byte, entry, hostCallbackID string) ([]byte, http.Header, error) {
+func runCombo(ctx context.Context, c combo, body []byte, entry, exit, hostCallbackID string) ([]byte, http.Header, error) {
 	if len(c.Targets) == 0 {
 		return nil, nil, errors.New("combo " + c.Name + " has no targets")
 	}
 	var failures []comboAttemptFailure
 	var lastHeaders http.Header
 	for _, target := range c.Targets {
-		payload, headers, err := hostModelExecute(ctx, hostCallbackID, target, body, entry)
+		payload, headers, err := hostModelExecute(ctx, hostCallbackID, target, body, entry, exit)
 		if err == nil {
 			return payload, headers, nil
 		}
@@ -212,11 +230,11 @@ type hostModelExecutionRequest struct {
 	HostCallbackID string `json:"host_callback_id,omitempty"`
 }
 
-func hostModelExecute(ctx context.Context, hostCallbackID string, target comboTarget, body []byte, entry string) ([]byte, http.Header, error) {
+func hostModelExecute(ctx context.Context, hostCallbackID string, target comboTarget, body []byte, entry, exit string) ([]byte, http.Header, error) {
 	req := hostModelExecutionRequest{
 		HostModelExecutionRequest: pluginapi.HostModelExecutionRequest{
 			EntryProtocol:  entry,
-			ExitProtocol:   entry,
+			ExitProtocol:   exit,
 			Model:          target.Model,
 			Stream:         false,
 			Body:           body,
@@ -236,13 +254,13 @@ func hostModelExecute(ctx context.Context, hostCallbackID string, target comboTa
 	return resp.Body, cloneHeader(resp.Headers), nil
 }
 
-func streamCombo(ctx context.Context, c combo, body []byte, entry, hostCallbackID, streamID string) error {
+func streamCombo(ctx context.Context, c combo, body []byte, entry, exit, hostCallbackID, streamID string) error {
 	if len(c.Targets) == 0 {
 		return errors.New("combo " + c.Name + " has no targets")
 	}
 	var failures []comboAttemptFailure
 	for _, target := range c.Targets {
-		emitted, err := forwardTargetStream(ctx, target, body, entry, hostCallbackID, streamID)
+		emitted, err := forwardTargetStream(ctx, target, body, entry, exit, hostCallbackID, streamID)
 		if err == nil {
 			return nil
 		}
@@ -265,11 +283,11 @@ func streamCombo(ctx context.Context, c combo, body []byte, entry, hostCallbackI
 		c.Name, len(c.Targets), strings.Join(parts, "; "))
 }
 
-func forwardTargetStream(ctx context.Context, target comboTarget, body []byte, entry, hostCallbackID, streamID string) (bool, error) {
+func forwardTargetStream(ctx context.Context, target comboTarget, body []byte, entry, exit, hostCallbackID, streamID string) (bool, error) {
 	req := hostModelExecutionRequest{
 		HostModelExecutionRequest: pluginapi.HostModelExecutionRequest{
 			EntryProtocol:  entry,
-			ExitProtocol:   entry,
+			ExitProtocol:   exit,
 			Model:          target.Model,
 			Stream:         true,
 			Body:           body,

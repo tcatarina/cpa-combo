@@ -72,12 +72,43 @@ func TestDescribeTargetIncludesAccount(t *testing.T) {
 	}
 }
 
+func TestNegotiationProtocolsSwapsEntryAndReply(t *testing.T) {
+	cases := []struct {
+		name      string
+		source    string
+		format    string
+		wantEntry string
+		wantReply string
+	}{
+		{"openai client, openai target", "openai", "openai", "openai", "openai"},
+		{"claude client, openai target", "claude", "openai", "openai", "claude"},
+		{"openai-response client", "openai-response", "openai-response", "openai-response", "openai-response"},
+		{"openai-response client, openai target", "openai-response", "openai", "openai", "openai-response"},
+		{"gemini client, openai target", "gemini", "openai", "openai", "gemini"},
+		{"claude client, claude target", "claude", "claude", "claude", "claude"},
+		{"unknown format passes through", "brand-new", "brand-new", "brand-new", "brand-new"},
+		{"no target format", "claude", "", "claude", "claude"},
+		{"no client format", "", "openai", "openai", "openai"},
+		{"neither", "", "", "openai", "openai"},
+	}
+	for _, tc := range cases {
+		req := rpcExecutorRequest{}
+		req.SourceFormat = tc.source
+		req.Format = tc.format
+		entry, reply := negotiationProtocols(req)
+		if entry != tc.wantEntry || reply != tc.wantReply {
+			t.Errorf("%s: got entry=%q reply=%q, want entry=%q reply=%q",
+				tc.name, entry, reply, tc.wantEntry, tc.wantReply)
+		}
+	}
+}
+
 func TestStreamComboStopsFailingOverAfterOutputStarted(t *testing.T) {
 	c := combo{Name: "smart", Targets: []comboTarget{
 		{Provider: "glm", Model: "a"},
 		{Provider: "glm", Model: "b"},
 	}}
-	err := streamCombo(context.Background(), c, []byte(`{}`), "openai", "cb", "")
+	err := streamCombo(context.Background(), c, []byte(`{}`), "openai", "openai", "cb", "")
 	if err == nil {
 		t.Fatal("expected an error with no reachable host")
 	}
@@ -93,20 +124,8 @@ func TestStreamComboStopsFailingOverAfterOutputStarted(t *testing.T) {
 }
 
 func TestStreamComboRejectsEmptyTargetList(t *testing.T) {
-	err := streamCombo(context.Background(), combo{Name: "empty"}, nil, "openai", "cb", "")
+	err := streamCombo(context.Background(), combo{Name: "empty"}, nil, "openai", "openai", "cb", "")
 	if err == nil || !strings.Contains(err.Error(), "has no targets") {
 		t.Fatalf("want a no-targets error, got %v", err)
-	}
-}
-
-func TestEntryProtocolPrefersSource(t *testing.T) {
-	if got := entryProtocol("claude", "openai"); got != "claude" {
-		t.Fatalf("got %q", got)
-	}
-	if got := entryProtocol("", "nonsense"); got != "openai" {
-		t.Fatalf("got %q", got)
-	}
-	if got := entryProtocol("responses", "openai"); got != "responses" {
-		t.Fatalf("got %q", got)
 	}
 }

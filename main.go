@@ -252,8 +252,8 @@ func pluginRegistration() registration {
 			ModelRegistrar:        true,
 			Executor:              true,
 			ExecutorModelScope:    string(pluginapi.ExecutorModelScopeStatic),
-			ExecutorInputFormats:  []string{"openai", "claude", "gemini", "responses"},
-			ExecutorOutputFormats: []string{"openai", "claude", "gemini", "responses"},
+			ExecutorInputFormats:  []string{"openai", "openai-response", "claude", "gemini"},
+			ExecutorOutputFormats: []string{"openai", "openai-response", "claude", "gemini"},
 			ManagementAPI:         true,
 		},
 	}
