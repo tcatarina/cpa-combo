@@ -65,6 +65,12 @@ func handleManagement(raw []byte) ([]byte, error) {
 		return serveCombosCreate(req.ManagementRequest)
 	case path == apiPath && method == http.MethodDelete:
 		return serveCombosDelete(req.ManagementRequest)
+	case path == apiPath+"/accounts" && method == http.MethodGet:
+		accounts, err := listComboAccounts()
+		if err != nil {
+			return okEnvelope(jsonResponse(502, map[string]any{"error": err.Error()}))
+		}
+		return okEnvelope(jsonResponse(200, map[string]any{"accounts": accounts, "count": len(accounts)}))
 	default:
 		return okEnvelope(jsonResponse(404, map[string]any{"error": "not found"}))
 	}

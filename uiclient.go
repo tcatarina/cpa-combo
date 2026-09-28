@@ -10,7 +10,7 @@ const comboPageJS = `
   var PREFIX = CUT >= 0 ? location.pathname.slice(0, CUT) : "";
   var API = PREFIX + "/v0/management/combos/api";
   var KEY_STORE = "cpamp-combos-management-key";
-  var state = { combos: [], filter: "all", key: null, draft: [] };
+  var state = { combos: [], filter: "all", key: null, draft: [], accounts: [] };
   try { state.key = localStorage.getItem(KEY_STORE) || null; } catch (e) { state.key = null; }
 
   var $ = function (id) { return document.getElementById(id); };
@@ -142,9 +142,52 @@ const comboPageJS = `
     return state.combos.slice();
   }
 
+  function loadAccounts() {
+    if (!state.key || state.accounts.length) return Promise.resolve();
+    return api("/accounts").then(function (d) {
+      state.accounts = (d && d.accounts) || [];
+    }).catch(function () {
+      state.accounts = [];
+    });
+  }
+
+  function accountsFor(t) {
+    var provider = String(t.provider || "").toLowerCase();
+    if (!provider) return [];
+    return state.accounts.filter(function (a) { return a.provider === provider; });
+  }
+
+  function accountSelect(t, i) {
+    var list = accountsFor(t);
+    if (!state.accounts.length) return "";
+    var opts = '<option value=""' + (t.auth_id ? "" : " selected") + ">Any (auto)</option>";
+    list.forEach(function (a) {
+      var tag = a.label || a.name;
+      if (a.disabled) tag += " (disabled)";
+      else if (a.unavailable) tag += " (unavailable)";
+      opts += '<option value="' + esc(a.id) + '"' + (t.auth_id === a.id ? " selected" : "") + ">" +
+        esc(tag) + "</option>";
+    });
+    if (t.auth_id && !list.some(function (a) { return a.id === t.auth_id; })) {
+      opts += '<option value="' + esc(t.auth_id) + '" selected>' +
+        esc(t.account || t.auth_id) + " (missing)</option>";
+    }
+    return '<select class="acct" data-acct="' + i + '">' + opts + "</select>";
+  }
+
+  function applyAccount(i, id) {
+    var t = state.draft[i];
+    if (!t) return;
+    if (!id) { delete t.auth_id; delete t.account; return; }
+    var hit = (state.accounts || []).filter(function (a) { return a.id === id; })[0];
+    t.auth_id = id;
+    t.account = hit ? (hit.label || hit.name) : id;
+  }
+
   function targetRow(combo, t, i) {
     var label = t.label || t.model;
     var sub = t.provider ? t.provider : "resolved by model name";
+    if (t.account) sub += " · " + t.account;
     return '<div class="target" data-first="' + (i === 0 ? "1" : "") + '" draggable="true" data-i="' + i + '">' +
       '<span class="idx">' + (i + 1) + "</span>" +
       '<span class="meta"><span class="m">' + esc(label) + "</span>" +
@@ -275,16 +318,36 @@ const comboPageJS = `
     box.className = "draft";
     box.innerHTML = state.draft.map(function (t, i) {
       var label = t.model;
+      var sub = t.provider || "resolved by model name";
       return '<div class="target" data-first="' + (i === 0 ? "1" : "") + '">' +
         '<span class="idx">' + (i + 1) + "</span>" +
         '<span class="meta"><span class="m">' + esc(label) + "</span>" +
-        '<span class="p">' + esc(t.provider || "resolved by model name") + "</span></span>" +
+        '<span class="p">' + esc(sub) + "</span></span>" +
+        accountSelect(t, i) +
+        '<button class="btn sm ghost" data-clone="' + i + '" title="Add the same model again on another account">+acct</button>' +
         '<button class="btn sm ghost" data-dup="' + i + '" title="Move up"' + (i === 0 ? " disabled" : "") + ">&uarr;</button>" +
         '<button class="btn sm ghost" data-ddn="' + i + '" title="Move down"' +
           (i === state.draft.length - 1 ? " disabled" : "") + ">&darr;</button>" +
         '<button class="btn sm ghost" data-rm="' + i + '" title="Remove">Remove</button>' +
         "</div>";
     }).join("");
+    Array.prototype.forEach.call(box.querySelectorAll("[data-acct]"), function (s) {
+      s.addEventListener("change", function () {
+        applyAccount(Number(s.dataset.acct), s.value);
+        renderDraft();
+      });
+    });
+    Array.prototype.forEach.call(box.querySelectorAll("[data-clone]"), function (b) {
+      b.addEventListener("click", function () {
+        var i = Number(b.dataset.clone);
+        var src = state.draft[i];
+        if (!src) return;
+        var copy = { provider: src.provider, model: src.model };
+        state.draft.splice(i + 1, 0, copy);
+        renderDraft();
+        setMsg("Copied " + src.model + ". Pick a different account for the new row.", "ok");
+      });
+    });
     Array.prototype.forEach.call(box.querySelectorAll("[data-rm]"), function (b) {
       b.addEventListener("click", function () { state.draft.splice(Number(b.dataset.rm), 1); renderDraft(); });
     });
@@ -352,10 +415,12 @@ const comboPageJS = `
     try { localStorage.setItem(KEY_STORE, key); } catch (e) {}
     applyLock();
     setMsg("Unlocked.", "ok");
+    loadAccounts().then(function () { renderDraft(); });
   });
 
   applyLock();
   renderDraft();
   load();
+  if (state.key) loadAccounts().then(function () { renderDraft(); });
 })();
 `

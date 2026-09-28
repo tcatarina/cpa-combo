@@ -174,6 +174,9 @@ h1{margin:0;font-size:22px;font-weight:650;letter-spacing:-.01em}
 .target .m{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:12.5px;
   white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .target .p{font-size:11px;color:var(--muted);margin-top:1px}
+.acct{max-width:190px;font-size:11.5px;padding:4px 7px;border-radius:8px;
+  border:1px solid var(--border);background:var(--surface-2);color:var(--text)}
+.acct:disabled{opacity:.55}
 .target .arrow{flex:0 0 auto;color:var(--muted);font-size:11px;padding:0 2px}
 .target[data-first] .idx{background:color-mix(in srgb,var(--ok) 16%,transparent);color:var(--ok)}
 
@@ -230,5 +233,6 @@ func comboPageRoutes() []managementRoute {
 		{Method: http.MethodPost, Path: resourcePath + "/api", Description: "Create combo"},
 		{Method: http.MethodPut, Path: resourcePath + "/api", Description: "Replace combos"},
 		{Method: http.MethodDelete, Path: resourcePath + "/api", Description: "Delete combo"},
+		{Method: http.MethodGet, Path: resourcePath + "/api/accounts", Description: "List credential accounts"},
 	}
 }

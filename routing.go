@@ -1,7 +1,6 @@
 package main
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -89,6 +88,9 @@ func comboDescription(c combo) string {
 		if t.Provider != "" {
 			label = t.Provider + "/" + label
 		}
+		if t.Account != "" {
+			label += " @" + t.Account
+		}
 		parts = append(parts, label)
 	}
 	desc := "priority: " + strings.Join(parts, " -> ")
@@ -132,18 +134,22 @@ func handleExecute(raw []byte, stream bool) ([]byte, error) {
 	}
 
 	entry := entryProtocol(req.SourceFormat, req.Format)
-	body, headers, err := runCombo(context.Background(), c, payload, entry, stream, req.HostCallbackID)
+	chunks, headers, err := runCombo(context.Background(), c, payload, entry, stream, req.HostCallbackID)
 	if err != nil {
 		return errorEnvelope("combo_failed", err.Error()), nil
 	}
 
 	if stream {
-		return okEnvelope(executorStreamResponse{
-			Headers: headers,
-			Chunks:  []pluginapi.ExecutorStreamChunk{{Payload: body}},
-		})
+		out := make([]pluginapi.ExecutorStreamChunk, 0, len(chunks))
+		for _, chunk := range chunks {
+			out = append(out, pluginapi.ExecutorStreamChunk{Payload: chunk})
+		}
+		return okEnvelope(executorStreamResponse{Headers: headers, Chunks: out})
 	}
-	return okEnvelope(pluginapi.ExecutorResponse{Payload: body, Headers: headers})
+	if len(chunks) == 0 {
+		return errorEnvelope("combo_failed", "combo "+name+" returned an empty response"), nil
+	}
+	return okEnvelope(pluginapi.ExecutorResponse{Payload: chunks[0], Headers: headers})
 }
 
 func entryProtocol(sourceFormat, format string) string {
@@ -163,7 +169,7 @@ type comboAttemptFailure struct {
 	status int
 }
 
-func runCombo(ctx context.Context, c combo, body []byte, entry string, stream bool, hostCallbackID string) ([]byte, http.Header, error) {
+func runCombo(ctx context.Context, c combo, body []byte, entry string, stream bool, hostCallbackID string) ([][]byte, http.Header, error) {
 	if len(c.Targets) == 0 {
 		return nil, nil, errors.New("combo " + c.Name + " has no targets")
 	}
@@ -189,10 +195,14 @@ func runCombo(ctx context.Context, c combo, body []byte, entry string, stream bo
 }
 
 func describeTarget(t comboTarget) string {
-	if t.Provider == "" {
-		return t.Model
+	name := t.Model
+	if t.Provider != "" {
+		name = t.Provider + "/" + name
 	}
-	return t.Provider + "/" + t.Model
+	if t.Account != "" {
+		return name + " @ " + t.Account
+	}
+	return name
 }
 
 type hostModelExecutionRequest struct {
@@ -200,7 +210,7 @@ type hostModelExecutionRequest struct {
 	HostCallbackID string `json:"host_callback_id,omitempty"`
 }
 
-func hostModelExecute(ctx context.Context, hostCallbackID string, target comboTarget, body []byte, entry string, stream bool) ([]byte, http.Header, error) {
+func hostModelExecute(ctx context.Context, hostCallbackID string, target comboTarget, body []byte, entry string, stream bool) ([][]byte, http.Header, error) {
 	method := pluginabi.MethodHostModelExecute
 	if stream {
 		method = pluginabi.MethodHostModelExecuteStream
@@ -213,6 +223,7 @@ func hostModelExecute(ctx context.Context, hostCallbackID string, target comboTa
 			Stream:         stream,
 			Body:           body,
 			ForcedProvider: providers.resolve(target.Provider),
+			AuthID:         target.AuthID,
 		},
 		HostCallbackID: hostCallbackID,
 	}
@@ -227,10 +238,10 @@ func hostModelExecute(ctx context.Context, hostCallbackID string, target comboTa
 		return nil, cloneHeader(resp.Headers), fmt.Errorf("host model status %d: %s",
 			resp.StatusCode, snippet(resp.Body))
 	}
-	return resp.Body, cloneHeader(resp.Headers), nil
+	return [][]byte{resp.Body}, cloneHeader(resp.Headers), nil
 }
 
-func drainHostStream(req hostModelExecutionRequest) ([]byte, http.Header, error) {
+func drainHostStream(req hostModelExecutionRequest) ([][]byte, http.Header, error) {
 	var resp pluginapi.HostModelStreamResponse
 	if err := callHostResult(pluginabi.MethodHostModelExecuteStream, req, &resp); err != nil {
 		return nil, nil, err
@@ -242,7 +253,7 @@ func drainHostStream(req hostModelExecutionRequest) ([]byte, http.Header, error)
 	if streamID == "" {
 		return nil, cloneHeader(resp.Headers), errors.New("host stream returned no stream id")
 	}
-	var out bytes.Buffer
+	var chunks [][]byte
 	for {
 		var read pluginapi.HostModelStreamReadResponse
 		if err := callHostResult(pluginabi.MethodHostModelStreamRead,
@@ -250,12 +261,14 @@ func drainHostStream(req hostModelExecutionRequest) ([]byte, http.Header, error)
 			return nil, nil, err
 		}
 		if len(read.Payload) > 0 {
-			out.Write(read.Payload)
+			chunk := make([]byte, len(read.Payload))
+			copy(chunk, read.Payload)
+			chunks = append(chunks, chunk)
 		}
 		if read.Done {
 			_ = callHostResult(pluginabi.MethodHostModelStreamClose,
 				pluginapi.HostModelStreamCloseRequest{StreamID: streamID}, nil)
-			return out.Bytes(), cloneHeader(resp.Headers), nil
+			return chunks, cloneHeader(resp.Headers), nil
 		}
 	}
 }

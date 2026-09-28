@@ -17,6 +17,8 @@ type comboTarget struct {
 	Provider string `json:"provider,omitempty"`
 	Model    string `json:"model"`
 	Label    string `json:"label,omitempty"`
+	AuthID   string `json:"auth_id,omitempty"`
+	Account  string `json:"account,omitempty"`
 }
 
 type combo struct {
@@ -189,7 +191,7 @@ func normalizeCombo(c combo) *combo {
 		if model == "" {
 			continue
 		}
-		key := strings.ToLower(strings.TrimSpace(t.Provider)) + "\x00" + model
+		key := strings.ToLower(strings.TrimSpace(t.Provider)) + "\x00" + model + "\x00" + strings.TrimSpace(t.AuthID)
 		if seen[key] {
 			continue
 		}
@@ -198,6 +200,8 @@ func normalizeCombo(c combo) *combo {
 			Provider: strings.ToLower(strings.TrimSpace(t.Provider)),
 			Model:    model,
 			Label:    strings.TrimSpace(t.Label),
+			AuthID:   strings.TrimSpace(t.AuthID),
+			Account:  strings.TrimSpace(t.Account),
 		})
 	}
 	if len(out.Targets) == 0 {
