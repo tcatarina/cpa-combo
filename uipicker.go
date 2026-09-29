@@ -93,7 +93,11 @@ const comboPickerJS = `
     options = options || {};
     var h = Object.assign({ "Content-Type": "application/json" }, options.headers || {});
     if (key()) h.Authorization = "Bearer " + key();
-    return fetch(url, { method: options.method || "GET", headers: h }).then(function (r) {
+    return fetch(url, {
+      method: options.method || "GET",
+      headers: h,
+      body: options.body ? JSON.stringify(options.body) : undefined
+    }).then(function (r) {
       return r.text().then(function (t) {
         var d = null;
         try { d = t ? JSON.parse(t) : null; } catch (e) {}

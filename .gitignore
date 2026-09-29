@@ -2,3 +2,4 @@ dist/
 cpa-plugin-combos
 combos.h
 *.log
+combos.json

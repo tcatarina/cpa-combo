@@ -129,6 +129,11 @@ func normalizePath(p string) string {
 }
 
 func serveCombosAPI(req pluginapi.ManagementRequest, body []byte) ([]byte, error) {
+	// A write with no body is a client bug, not an empty change. Answering 200
+	// with the unchanged state would hide it, so a bodyless PUT is rejected.
+	if method := strings.ToUpper(strings.TrimSpace(req.Method)); method == http.MethodPut && len(body) == 0 {
+		return okEnvelope(jsonResponse(400, map[string]any{"error": "PUT requires a body"}))
+	}
 	if len(body) > 0 {
 		var file comboFile
 		if err := json.Unmarshal(body, &file); err != nil {
