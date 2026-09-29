@@ -99,3 +99,24 @@ func TestPickerFetchForwardsTheRequestBody(t *testing.T) {
 		t.Error("jfetch does not pass a body to fetch")
 	}
 }
+
+// A saved combo has no way to drop a model without the page offering one.
+func TestSavedComboRowsOfferRemove(t *testing.T) {
+	if !strings.Contains(comboPageJS, `data-rm="' + i`) {
+		t.Error("a saved combo's target rows have no remove control")
+	}
+	if !strings.Contains(comboPageJS, "Remove from combo") {
+		t.Error("the remove control has no title")
+	}
+}
+
+// A combo with no targets is discarded by normalizeCombo, so removing the last
+// one would delete the combo instead of a model.
+func TestLastTargetIsProtected(t *testing.T) {
+	if normalizeCombo(combo{Name: "solo", Targets: nil}) != nil {
+		t.Error("a combo with no targets must be dropped, or the last-target guard is not needed")
+	}
+	if !strings.Contains(comboPageJS, "combo.targets.length === 1") {
+		t.Error("the remove control is not disabled for a single-target combo")
+	}
+}

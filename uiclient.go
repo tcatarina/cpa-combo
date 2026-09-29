@@ -218,6 +218,8 @@ const comboPageJS = `
       '<button class="btn sm ghost" data-up="' + i + '" title="Move up"' + (i === 0 ? " disabled" : "") + ">&uarr;</button>" +
       '<button class="btn sm ghost" data-down="' + i + '" title="Move down"' +
         (i === combo.targets.length - 1 ? " disabled" : "") + ">&darr;</button>" +
+      '<button class="btn sm danger" data-rm="' + i + '" title="Remove from combo"' +
+        (combo.targets.length === 1 ? " disabled" : "") + ">Remove</button>" +
       "</div>";
   }
 
@@ -256,6 +258,17 @@ const comboPageJS = `
     applyLock();
   }
 
+  // Every edit to a saved combo goes through here: find the card's combo,
+  // apply the new target list, and persist the whole set.
+  function saveTargetsOf(card, targets) {
+    var combo = state.combos.filter(function (c) { return c.name === card.dataset.name; })[0];
+    if (!combo) return;
+    combo.targets = targets;
+    save(state.combos.map(function (c) {
+      return { name: c.name, description: c.description, targets: c.targets };
+    }), "PUT");
+  }
+
   function wire() {
     Array.prototype.forEach.call(list.querySelectorAll("[data-del]"), function (b) {
       b.addEventListener("click", function () {
@@ -288,21 +301,37 @@ const comboPageJS = `
 
     Array.prototype.forEach.call(list.querySelectorAll("[data-up],[data-down]"), function (b) {
       b.addEventListener("click", function () {
-        var card = b.closest(".card");
-        var combo = state.combos.filter(function (c) { return c.name === card.dataset.name; })[0];
+        var combo = state.combos.filter(function (c) {
+          return c.name === b.closest(".card").dataset.name;
+        })[0];
         if (!combo) return;
         var i = b.dataset.up !== undefined ? Number(b.dataset.up) : Number(b.dataset.down) + 1;
         var j = b.dataset.up !== undefined ? i - 1 : i + 1;
         if (j < 0 || j >= combo.targets.length) return;
-        var tmp = combo.targets[i];
-        combo.targets[i] = combo.targets[j];
-        combo.targets[j] = tmp;
-        var next = state.combos.map(function (c) {
-          return c.name === combo.name
-            ? { name: c.name, description: c.description, targets: c.targets }
-            : { name: c.name, description: c.description, targets: c.targets };
-        });
-        save(next, "PUT");
+        var targets = combo.targets.slice();
+        var tmp = targets[i];
+        targets[i] = targets[j];
+        targets[j] = tmp;
+        saveTargetsOf(b.closest(".card"), targets);
+      });
+    });
+
+    Array.prototype.forEach.call(list.querySelectorAll(".target [data-rm]"), function (b) {
+      b.addEventListener("click", function () {
+        var card = b.closest(".card");
+        var combo = state.combos.filter(function (c) { return c.name === card.dataset.name; })[0];
+        if (!combo) return;
+        var i = Number(b.dataset.rm);
+        if (isNaN(i) || i < 0 || i >= combo.targets.length) return;
+        // A combo with no targets is dropped on save, so removing the last
+        // one would delete the combo rather than a model.
+        if (combo.targets.length === 1) {
+          setMsg("That is the only model; delete the combo instead.", "err");
+          return;
+        }
+        var t = combo.targets[i];
+        if (!confirm('Remove "' + (t.label || t.model) + '" from "' + combo.name + '"?')) return;
+        saveTargetsOf(card, combo.targets.slice(0, i).concat(combo.targets.slice(i + 1)));
       });
     });
 
