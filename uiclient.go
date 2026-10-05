@@ -271,8 +271,44 @@ const comboPageJS = `
     };
   }
 
-  function persist(next, msg) {
-    return save(next.map(project), "PUT").then(msg || null);
+  // CPA snapshots plugin-registered models, so a new window only reaches
+  // /v1/models after the host re-registers. Rewriting the config is what makes
+  // it do that, and an unchanged config is a no-op, so bump a counter the
+  // plugin owns to guarantee a real diff. About 30ms, no restart.
+  function publishContextWindows() {
+    if (!state.key) return Promise.resolve("Saved. Unlock to publish the window.");
+    var cfgUrl = PREFIX + "/v8/management/config";
+    var cfgFetch = function (method, body) {
+      return fetch(cfgUrl, {
+        method: method,
+        headers: Object.assign({ "Content-Type": "application/json" }, authHeaders()),
+        body: body ? JSON.stringify(body) : undefined
+      }).then(function (res) {
+        if (!res.ok) throw new Error("HTTP " + res.status);
+        return res.json();
+      });
+    };
+    return cfgFetch("GET")
+      .then(function (cfg) {
+        if (!cfg || typeof cfg !== "object") throw new Error("config unavailable");
+        var plugins = cfg.plugins = cfg.plugins || {};
+        var configs = plugins.configs = plugins.configs || {};
+        var combosCfg = configs.combos = configs.combos || {};
+        var next = Number(combosCfg.context_revision || 0) + 1;
+        if (!isFinite(next) || next < 1) next = 1;
+        combosCfg.context_revision = next;
+        return cfgFetch("PUT", cfg);
+      })
+      .then(function () { return "Saved and published."; })
+      .catch(function (e) { return "Saved, but the window needs a host reload: " + e.message; });
+  }
+
+  function persist(next, msg, publish) {
+    var wrote = save(next.map(project), "PUT");
+    if (!publish) return wrote.then(msg || null);
+    return wrote
+      .then(function () { return publishContextWindows(); })
+      .then(function (note) { setMsg(note || msg || "Saved.", "ok"); });
   }
 
   // Context lengths the host publishes, keyed by model id.
@@ -363,9 +399,7 @@ const comboPageJS = `
     }
     combo.context_length = n;
     closeEdit();
-    persist(state.combos, "Saved.").then(function () {
-      if (combo.context_length > 0) setMsg("Saved.", "ok");
-    });
+    persist(state.combos, "Saved.", true);
   }
 
   function editAddModels() {

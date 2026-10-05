@@ -112,6 +112,33 @@ func TestEveryWritePreservesContextLength(t *testing.T) {
 	}
 }
 
+// CPA snapshots plugin-registered models, so a saved window is invisible until
+// the host re-registers. Rewriting an unchanged config is a no-op, so the save
+// path bumps a counter it owns to force a real diff.
+func TestSavingAWindowPublishesIt(t *testing.T) {
+	start := strings.Index(comboPageJS, "function publishContextWindows(")
+	if start < 0 {
+		t.Fatal("saving a window never asks the host to republish it")
+	}
+	body := comboPageJS[start:]
+	if !strings.Contains(body, "/v8/management/config") {
+		t.Error("publishing does not write the host config")
+	}
+	if !strings.Contains(body, "context_revision") {
+		t.Error("publishing does not bump a revision, so an unchanged config is a no-op")
+	}
+	if !strings.Contains(comboPageJS, `persist(state.combos, "Saved.", true)`) {
+		t.Error("the editor saves the window without publishing it")
+	}
+}
+
+// Reordering a target keeps the window, so it must not claim to republish.
+func TestTargetEditsDoNotRepublish(t *testing.T) {
+	if strings.Contains(comboPageJS, "persist(state.combos, undefined, true)") {
+		t.Error("a target edit republishes the window for no reason")
+	}
+}
+
 func TestComboPageOffersContextLengthEditing(t *testing.T) {
 	if !strings.Contains(comboPageHTML, `id="ce-ctx"`) {
 		t.Error("the combo editor has no context length field")
