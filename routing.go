@@ -69,6 +69,9 @@ func handleModelRegister(raw []byte) ([]byte, error) {
 				DisplayName: c.Name,
 				Name:        c.Name,
 				Description: comboDescription(c),
+				// Zero is omitted from /v1/models, which keeps an unset combo
+				// behaving exactly as it did before this field existed.
+				ContextLength: c.ContextLength,
 			})
 		}
 	}

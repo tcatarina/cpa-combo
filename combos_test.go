@@ -2,8 +2,13 @@ package main
 
 import (
 	"context"
+	"encoding/json"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/router-for-me/CLIProxyAPI/v8/sdk/pluginapi"
 )
 
 func TestNormalizeComboKeepsSameModelOnDifferentAccounts(t *testing.T) {
@@ -32,6 +37,78 @@ func TestNormalizeComboKeepsSameModelOnDifferentAccounts(t *testing.T) {
 	}
 	if out.Targets[2].AuthID != "" {
 		t.Fatalf("unpinned target gained an auth id: %+v", out.Targets[2])
+	}
+}
+
+// normalizeCombo rebuilds the struct field by field, so a context window set
+// in the file used to be dropped on the next load and never advertised.
+func TestNormalizeComboKeepsContextLength(t *testing.T) {
+	out := normalizeCombo(combo{
+		Name:          "sized",
+		ContextLength: 200000,
+		Targets:       []comboTarget{{Provider: "glm", Model: "glm-5"}},
+	})
+	if out == nil || out.ContextLength != 200000 {
+		t.Fatalf("context length lost on load: %+v", out)
+	}
+}
+
+// A negative window is not a real limit and must never reach /v1/models.
+func TestNormalizeComboDropsNegativeContextLength(t *testing.T) {
+	out := normalizeCombo(combo{
+		Name:          "bad",
+		ContextLength: -1,
+		Targets:       []comboTarget{{Provider: "glm", Model: "glm-5"}},
+	})
+	if out == nil || out.ContextLength != 0 {
+		t.Fatalf("negative context length survived: %+v", out)
+	}
+}
+
+func TestModelRegisterAdvertisesContextLength(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, storeFileName)
+	body, err := json.Marshal(comboFile{Version: 1, Combos: []combo{
+		{Name: "sized", ContextLength: 200000, Targets: []comboTarget{{Model: "glm-5"}}},
+		{Name: "plain", Targets: []comboTarget{{Model: "glm-5"}}},
+	}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(path, body, 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	state := newRuntimeState()
+	state.path = path
+	if err := state.reload(); err != nil {
+		t.Fatal(err)
+	}
+	previous := runtime
+	t.Cleanup(func() { runtime = previous })
+	runtime = state
+
+	raw, err := handleModelRegister(nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var resp struct {
+		Result struct {
+			Models []pluginapi.ModelInfo `json:"models"`
+		} `json:"result"`
+	}
+	if err := json.Unmarshal(raw, &resp); err != nil {
+		t.Fatal(err)
+	}
+	got := map[string]int64{}
+	for _, m := range resp.Result.Models {
+		got[m.ID] = m.ContextLength
+	}
+	if got["sized"] != 200000 {
+		t.Fatalf("sized combo advertised %d, want 200000", got["sized"])
+	}
+	if got["plain"] != 0 {
+		t.Fatalf("unset combo advertised %d, want 0", got["plain"])
 	}
 }
 

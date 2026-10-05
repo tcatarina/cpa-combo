@@ -238,6 +238,7 @@ const comboPickerJS = `
           return {
             name: c.name,
             description: c.description,
+            context_length: c.context_length || 0,
             targets: c.name === name ? targets : c.targets
           };
         })
@@ -281,6 +282,7 @@ const comboPickerJS = `
           return {
             name: c.name,
             description: c.description,
+            context_length: c.context_length || 0,
             targets: c.name === name ? targets : c.targets
           };
         })
@@ -301,5 +303,7 @@ const comboPickerJS = `
     state.query = "";
     loadCatalog();
   };
+  // The combo editor needs the same catalog to suggest a context window.
+  window.__comboLoadCatalog = loadCatalog;
 })();
 `

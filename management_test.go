@@ -100,6 +100,48 @@ func TestPickerFetchForwardsTheRequestBody(t *testing.T) {
 	}
 }
 
+// Every write projects the combo list into a literal object. Context length was
+// missing from those projections, so reordering a target or adding a model
+// silently reset the window the combo advertises.
+func TestEveryWritePreservesContextLength(t *testing.T) {
+	if !strings.Contains(comboPageJS, "context_length: c.context_length || 0") {
+		t.Error("the page's save projection drops context_length")
+	}
+	if got := strings.Count(comboPickerJS, "context_length: c.context_length || 0"); got != 2 {
+		t.Errorf("the picker has %d save projections carrying context_length, want 2", got)
+	}
+}
+
+func TestComboPageOffersContextLengthEditing(t *testing.T) {
+	if !strings.Contains(comboPageHTML, `id="ce-ctx"`) {
+		t.Error("the combo editor has no context length field")
+	}
+	if !strings.Contains(comboPageJS, `data-edit="' + esc(c.name)`) {
+		t.Error("a saved combo has no edit control")
+	}
+	for _, gone := range []string{"data-addmodels", "data-copy=", "data-del="} {
+		if strings.Contains(comboPageJS, gone) {
+			t.Errorf("the card still renders %s; those actions belong in the editor", gone)
+		}
+	}
+}
+
+// A combo is a fallback chain, so an empty window should advertise the room its
+// best target offers rather than nothing or the smallest target.
+func TestAutoContextTakesTheLargestTargetWindow(t *testing.T) {
+	start := strings.Index(comboPageJS, "function autoContext(")
+	if start < 0 {
+		t.Fatal("autoContext is missing")
+	}
+	body := comboPageJS[start:]
+	if !strings.Contains(comboPageJS, "m.context_length") {
+		t.Error("the page never reads the published per-model context_length")
+	}
+	if !strings.Contains(body, "if (n > best) best = n") {
+		t.Error("autoContext does not keep the largest window")
+	}
+}
+
 // A saved combo has no way to drop a model without the page offering one.
 func TestSavedComboRowsOfferRemove(t *testing.T) {
 	if !strings.Contains(comboPageJS, `data-rm="' + i`) {

@@ -22,11 +22,14 @@ type comboTarget struct {
 }
 
 type combo struct {
-	Name        string        `json:"name"`
-	Description string        `json:"description,omitempty"`
-	Targets     []comboTarget `json:"targets"`
-	CreatedAt   *time.Time    `json:"created_at,omitempty"`
-	UpdatedAt   *time.Time    `json:"updated_at,omitempty"`
+	Name string `json:"name"`
+	// ContextLength is the context window this combo advertises to clients.
+	// Zero means unset, and the host then has nothing to publish.
+	ContextLength int64         `json:"context_length,omitempty"`
+	Description   string        `json:"description,omitempty"`
+	Targets       []comboTarget `json:"targets"`
+	CreatedAt     *time.Time    `json:"created_at,omitempty"`
+	UpdatedAt     *time.Time    `json:"updated_at,omitempty"`
 }
 
 type comboFile struct {
@@ -176,11 +179,17 @@ func writeCombos(path string, combos []combo) error {
 
 func normalizeCombo(c combo) *combo {
 	out := combo{
-		Name:        normalizeModelName(c.Name),
-		Description: strings.TrimSpace(c.Description),
-		Targets:     []comboTarget{},
-		CreatedAt:   c.CreatedAt,
-		UpdatedAt:   c.UpdatedAt,
+		Name:          normalizeModelName(c.Name),
+		ContextLength: c.ContextLength,
+		Description:   strings.TrimSpace(c.Description),
+		Targets:       []comboTarget{},
+		CreatedAt:     c.CreatedAt,
+		UpdatedAt:     c.UpdatedAt,
+	}
+	// A non-positive window is not a real limit; treat it as unset so the
+	// field never publishes a nonsense value.
+	if out.ContextLength < 0 {
+		out.ContextLength = 0
 	}
 	if out.Name == "" {
 		return nil

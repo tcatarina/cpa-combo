@@ -226,6 +226,8 @@ const comboPageJS = `
   function card(c) {
     var id = c.name;
     var rows = c.targets.map(function (t, i) { return targetRow(c, t, i); }).join("");
+    var ctx = c.context_length ? '<p class="combo-ctx">Context <b>' +
+      Number(c.context_length).toLocaleString() + "</b> tokens</p>" : "";
     return '<section class="card" data-name="' + esc(c.name) + '">' +
       '<div class="combo-head"><div class="combo-id">' +
         '<span class="combo-name">' + esc(c.name) + "</span>" +
@@ -233,11 +235,11 @@ const comboPageJS = `
         '<code class="combo-model">' + esc(id) + "</code>" +
       "</div>" +
       '<div class="combo-actions">' +
-        '<button class="btn sm" data-addmodels="' + esc(c.name) + '" data-needs-key>Add models</button>' +
-        '<button class="btn sm" data-copy="' + esc(id) + '">Copy id</button>' +
-        '<button class="btn sm danger" data-del="' + esc(c.name) + '" data-needs-key>Delete</button>' +
+        '<button class="btn sm ghost icon" data-edit="' + esc(c.name) +
+        '" title="Edit combo" aria-label="Edit combo">&#9998;</button>' +
       "</div></div>" +
       (c.description ? '<p class="combo-desc">' + esc(c.description) + "</p>" : "") +
+      ctx +
       '<div class="targets">' + rows + "</div>" +
       "</section>";
   }
@@ -258,45 +260,165 @@ const comboPageJS = `
     applyLock();
   }
 
+  // Every field the store persists. A literal projection here would silently
+  // drop anything not listed, so keep it in one place.
+  function project(c) {
+    return {
+      name: c.name,
+      description: c.description,
+      targets: c.targets,
+      context_length: c.context_length || 0
+    };
+  }
+
+  function persist(next, msg) {
+    return save(next.map(project), "PUT").then(msg || null);
+  }
+
+  // Context lengths the host publishes, keyed by model id.
+  function catalogContext() {
+    var out = {};
+    (window.__comboCatalog || []).forEach(function (m) {
+      var n = Number(m.context_length);
+      if (m.id && isFinite(n) && n > 0) out[String(m.id)] = n;
+    });
+    return out;
+  }
+
+  // Largest window among the targets. A combo is a fallback chain, so its
+  // usable window is the room its best target offers, not the smallest.
+  function autoContext(combo) {
+    var known = catalogContext();
+    var best = 0;
+    (combo.targets || []).forEach(function (t) {
+      var id = String(t.model || "");
+      if (t.provider && id.indexOf("/") !== 0) id = t.provider + "/" + id;
+      var n = known[id] || known[String(t.model || "")] || 0;
+      if (n > best) best = n;
+    });
+    return best;
+  }
+
+  function fmtTokens(n) {
+    return n > 0 ? Number(n).toLocaleString() + " tokens" : "unknown";
+  }
+
+  function comboByName(name) {
+    return state.combos.filter(function (c) { return c.name === name; })[0];
+  }
+
+  var editing = "";
+
+  function editMsg(text, cls) {
+    var el = $("ce-msg");
+    if (!el) return;
+    el.textContent = text || "";
+    el.style.color = cls === "err" ? "var(--danger)" : "var(--muted)";
+  }
+
+  function refreshCtxHint() {
+    var combo = comboByName(editing);
+    if (!combo) return;
+    var auto = autoContext(combo);
+    var loaded = !!(window.__comboCatalog && window.__comboCatalog.length);
+    $("ce-ctx").placeholder = auto > 0 ? String(auto) : "Auto";
+    $("ce-ctx-hint").textContent = combo.context_length
+      ? "Advertised as " + fmtTokens(combo.context_length) + "."
+      : "Empty uses the largest target window: " +
+        (loaded ? fmtTokens(auto) : "loading the model catalog...");
+  }
+
+  function openEdit(name) {
+    var combo = comboByName(name);
+    if (!combo) return;
+    editing = name;
+    $("ce-title").textContent = "Edit combo";
+    $("ce-sub").textContent = combo.name;
+    $("ce-ctx").value = combo.context_length ? String(combo.context_length) : "";
+    editMsg("");
+    refreshCtxHint();
+    var dlg = $("cedit");
+    if (dlg && !dlg.open) dlg.showModal();
+    if (dlg) applyLock();
+    // The catalog carries the per-target windows the auto value is built from.
+    if (window.__comboLoadCatalog) {
+      Promise.resolve(window.__comboLoadCatalog()).then(refreshCtxHint);
+    }
+  }
+
+  function closeEdit() {
+    var dlg = $("cedit");
+    if (dlg && dlg.open) dlg.close();
+    editing = "";
+  }
+
+  function saveEdit() {
+    var combo = comboByName(editing);
+    if (!combo) return;
+    var raw = String($("ce-ctx").value || "").trim();
+    var n = raw === "" ? autoContext(combo) : Number(raw);
+    if (!isFinite(n) || n < 0 || Math.floor(n) !== n) {
+      editMsg("Context length must be a whole number of tokens.", "err");
+      return;
+    }
+    combo.context_length = n;
+    closeEdit();
+    persist(state.combos, "Saved.").then(function () {
+      if (combo.context_length > 0) setMsg("Saved.", "ok");
+    });
+  }
+
+  function editAddModels() {
+    var combo = comboByName(editing);
+    if (!combo) return;
+    window.__comboEditing = combo.name;
+    window.__comboState = state;
+    window.__comboOpenPicker();
+  }
+
+  function editCopy() {
+    var combo = comboByName(editing);
+    if (!combo || !navigator.clipboard) return;
+    navigator.clipboard.writeText(combo.name).then(function () {
+      editMsg("Copied.");
+      setTimeout(function () { editMsg(""); }, 1200);
+    });
+  }
+
+  function editDelete() {
+    var combo = comboByName(editing);
+    if (!combo) return;
+    if (!confirm('Delete combo "' + combo.name + '"?')) return;
+    closeEdit();
+    persist(state.combos.filter(function (c) { return c.name !== combo.name; }), "Deleted.");
+  }
+
   // Every edit to a saved combo goes through here: find the card's combo,
   // apply the new target list, and persist the whole set.
   function saveTargetsOf(card, targets) {
     var combo = state.combos.filter(function (c) { return c.name === card.dataset.name; })[0];
     if (!combo) return;
     combo.targets = targets;
-    save(state.combos.map(function (c) {
-      return { name: c.name, description: c.description, targets: c.targets };
-    }), "PUT");
+    return persist(state.combos);
   }
 
   function wire() {
-    Array.prototype.forEach.call(list.querySelectorAll("[data-del]"), function (b) {
-      b.addEventListener("click", function () {
-        var name = b.dataset.del;
-        if (!confirm('Delete combo "' + name + '"?')) return;
-        var next = state.combos.filter(function (c) { return c.name !== name; });
-        save(next, "PUT");
-      });
+    Array.prototype.forEach.call(list.querySelectorAll("[data-edit]"), function (b) {
+      b.addEventListener("click", function () { openEdit(b.dataset.edit); });
     });
 
-    Array.prototype.forEach.call(list.querySelectorAll("[data-addmodels]"), function (b) {
-      b.addEventListener("click", function () {
-        window.__comboEditing = b.dataset.addmodels;
-        window.__comboState = state;
-        window.__comboOpenPicker();
-      });
-    });
-
-    Array.prototype.forEach.call(list.querySelectorAll("[data-copy]"), function (b) {
-      b.addEventListener("click", function () {
-        var text = b.dataset.copy;
-        if (navigator.clipboard) {
-          navigator.clipboard.writeText(text).then(function () {
-            b.textContent = "Copied";
-            setTimeout(function () { b.textContent = "Copy id"; }, 1200);
-          });
-        }
-      });
+    var dlg = $("cedit");
+    if (dlg && !dlg.dataset.wired) {
+      dlg.dataset.wired = "1";
+      dlg.addEventListener("close", function () { editing = ""; });
+    }
+    [["ce-close", closeEdit], ["ce-save", saveEdit], ["ce-add", editAddModels],
+     ["ce-copy", editCopy], ["ce-del", editDelete]].forEach(function (pair) {
+      var el = $(pair[0]);
+      if (el && !el.dataset.wired) {
+        el.dataset.wired = "1";
+        el.addEventListener("click", pair[1]);
+      }
     });
 
     Array.prototype.forEach.call(list.querySelectorAll("[data-up],[data-down]"), function (b) {

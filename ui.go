@@ -76,6 +76,35 @@ const comboPageHTML = `<!doctype html>
   </form>
 </dialog>
 
+<dialog id="cedit" class="cedit">
+  <div class="cedit-head">
+    <div>
+      <h3 id="ce-title">Edit combo</h3>
+      <p class="cedit-sub" id="ce-sub"></p>
+    </div>
+    <button class="btn ghost sm" id="ce-close" type="button">Close</button>
+  </div>
+
+  <div class="cedit-body">
+    <div class="field">
+      <label for="ce-ctx">Context length <span class="opt">tokens</span></label>
+      <input id="ce-ctx" type="number" min="0" step="1" inputmode="numeric"
+             placeholder="Auto" autocomplete="off">
+      <span class="hint" id="ce-ctx-hint"></span>
+    </div>
+    <div class="cedit-row">
+      <button class="btn sm" id="ce-add" type="button" data-needs-key>Add models</button>
+      <button class="btn sm" id="ce-copy" type="button">Copy id</button>
+      <button class="btn sm danger" id="ce-del" type="button" data-needs-key>Delete</button>
+    </div>
+  </div>
+
+  <div class="cedit-foot">
+    <span class="picker-hint" id="ce-msg"></span>
+    <button class="btn primary" id="ce-save" type="button" data-needs-key>Save</button>
+  </div>
+</dialog>
+
 __PICKER__
 
 <script src="?asset=js"></script>
@@ -164,6 +193,27 @@ h1{margin:0;font-size:22px;font-weight:650;letter-spacing:-.01em}
 .combo-model{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:12px;color:var(--muted)}
 .combo-desc{margin:7px 0 0;color:var(--text-2);font-size:13px}
 .combo-actions{display:flex;gap:6px}
+.combo-actions .icon{padding:4px 8px;line-height:1;font-size:13px}
+.combo-ctx{margin:7px 0 0;font-size:12px;color:var(--muted)}
+.combo-ctx b{color:var(--text-2);font-weight:600}
+
+.cedit{
+  width:min(460px,94vw); padding:0; border:1px solid var(--border);
+  border-radius:var(--r); background:var(--surface); color:var(--text);
+  box-shadow:var(--shadow); overflow:hidden;
+}
+.cedit::backdrop{background:rgba(0,0,0,.35)}
+.cedit[open]{display:flex;flex-direction:column}
+.cedit-head{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;
+  padding:16px 18px 12px;border-bottom:1px solid var(--border)}
+.cedit h3{margin:0;font-size:15px;font-weight:650}
+.cedit-sub{margin:3px 0 0;font-size:12px;color:var(--muted);
+  font-family:ui-monospace,SFMono-Regular,Menlo,monospace}
+.cedit-body{padding:0 18px 4px}
+.cedit-body .field input{width:100%}
+.cedit-row{display:flex;flex-wrap:wrap;gap:6px;margin:16px 0 4px}
+.cedit-foot{display:flex;align-items:center;justify-content:space-between;gap:12px;
+  padding:12px 18px;border-top:1px solid var(--border)}
 
 .targets{margin-top:13px;display:flex;flex-direction:column;gap:7px}
 .target{display:flex;align-items:center;gap:10px;padding:8px 11px;border-radius:10px;
