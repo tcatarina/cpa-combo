@@ -245,6 +245,7 @@ func pluginRegistration() registration {
 			GitHubRepository: "https://github.com/tcatarina/cpa-combo",
 			ConfigFields: []pluginapi.ConfigField{
 				{Name: "enabled", Type: pluginapi.ConfigFieldTypeBoolean, Description: "Enable combo routing."},
+				{Name: "store_path", Type: pluginapi.ConfigFieldTypeString, Description: "Required absolute path to combos.json. Persist the parent directory with a Docker volume."},
 			},
 		},
 		Capabilities: registrationCapability{

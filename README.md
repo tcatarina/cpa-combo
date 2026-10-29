@@ -85,6 +85,37 @@ plugins:
     combos:
       enabled: true
       priority: 50
+      store_path: "/CLIProxyAPI/plugins/combos.json"
 ```
+
+`store_path` is required and must be absolute. In Docker, bind-mount its parent
+**directory**, not just the JSON file: saves use an atomic rename.
+
+```yaml
+# CPA service in compose.yaml
+volumes:
+  - ./plugins:/CLIProxyAPI/plugins
+```
+
+The plugin saves combos in this JSON file, not in CPAMP's database or CPA's YAML.
+`docker compose pull && docker compose down && docker compose up -d` preserves
+combos only when that file lives on persistent storage. Do not use `down -v`
+with named volumes unless deleting their data is intentional.
+
+### Upgrading an existing installation
+
+Before removing the old container, find its current `combos.json` and copy it to
+the host-mounted `./plugins/combos.json`, then set `store_path` as above. Verify
+the copied file contains your combos before recreating the container. Do not
+overwrite an existing destination blindly.
+
+Older plugin versions guessed storage from `/proc/self/maps` and selected the
+first mapped `.so`. Newer CPA versions load plugins from temporary shadow copies
+such as `/tmp/cliproxy-pluginhost/pid-1/`, so combos could be written inside the
+container's disposable filesystem even when the plugin directory was mounted.
+A restart could retain them; `compose down` removes that container filesystem.
+The plugin now refuses an unspecified storage path instead of silently saving
+there. An already-removed container's unmounted data cannot be recovered by this
+change.
 
 Set `COMBOS_TRACE=1` in the host environment for dispatch-level logging.

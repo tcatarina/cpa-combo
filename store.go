@@ -55,40 +55,7 @@ type pluginYAMLConfig struct {
 }
 
 func newRuntimeState() *runtimeState {
-	return &runtimeState{enabled: true, path: defaultStorePath()}
-}
-
-func defaultStorePath() string {
-	if dir := selfLibraryDir(); dir != "" {
-		return filepath.Join(dir, storeFileName)
-	}
-	if wd, err := os.Getwd(); err == nil {
-		return filepath.Join(wd, storeFileName)
-	}
-	return storeFileName
-}
-
-func selfLibraryDir() string {
-	raw, err := os.ReadFile("/proc/self/maps")
-	if err != nil {
-		return ""
-	}
-	self, err := os.Executable()
-	if err != nil {
-		return ""
-	}
-	for _, line := range strings.Split(string(raw), "\n") {
-		idx := strings.Index(line, " /")
-		if idx < 0 {
-			continue
-		}
-		path := strings.TrimSpace(line[idx+1:])
-		if path == "" || path == self || !strings.HasSuffix(path, ".so") {
-			continue
-		}
-		return filepath.Dir(path)
-	}
-	return ""
+	return &runtimeState{enabled: true}
 }
 
 func (s *runtimeState) configure(raw []byte) error {
@@ -98,23 +65,30 @@ func (s *runtimeState) configure(raw []byte) error {
 			return err
 		}
 	}
-	if len(req.ConfigYAML) > 0 {
-		var cfg pluginYAMLConfig
-		if err := yaml.Unmarshal(req.ConfigYAML, &cfg); err != nil {
-			return err
-		}
-		if cfg.Enabled != nil {
-			s.mu.Lock()
-			s.enabled = *cfg.Enabled
-			s.mu.Unlock()
-		}
-		if p := strings.TrimSpace(cfg.StorePath); p != "" {
-			s.mu.Lock()
-			s.path = p
-			s.mu.Unlock()
-		}
+	var cfg pluginYAMLConfig
+	if err := yaml.Unmarshal(req.ConfigYAML, &cfg); err != nil {
+		return err
 	}
-	return s.reload()
+	path := strings.TrimSpace(cfg.StorePath)
+	// CPA may load a shadow copy from /tmp. Never infer persistent data storage
+	// from loaded-library mappings or the host's working directory.
+	if path == "" || !filepath.IsAbs(path) {
+		return errors.New("combos requires an absolute store_path in plugins.configs.combos (for example /CLIProxyAPI/plugins/combos.json); persist its parent directory with a Docker volume and move any existing combos.json there before upgrading")
+	}
+	combos, err := readCombos(path)
+	if err != nil {
+		return err
+	}
+	// Commit the new path and data together only after a successful read. A bad
+	// reconfigure must not redirect subsequent saves away from the working file.
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if cfg.Enabled != nil {
+		s.enabled = *cfg.Enabled
+	}
+	s.path = path
+	s.combos = combos
+	return nil
 }
 
 func (s *runtimeState) reload() error {
